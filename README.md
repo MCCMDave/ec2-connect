@@ -1,28 +1,31 @@
 # EC2 Connect
 
 Auto-Start und SSH-Verbindung zu EC2 Instanzen.
+Auto-start and SSH connection to EC2 instances.
+
+---
 
 ## Setup
 
-1. Key-Datei nach `~/.ssh/ec2-key.pem` kopieren
-2. Instance-ID in `connect-aws.ps1` anpassen (Zeile 8)
+**DE:** Key-Datei nach `~/.ssh/ec2-key.pem` kopieren, Instance-ID in `connect-aws.ps1` anpassen (Zeile 8)
 
-## Nutzung
+**EN:** Copy key file to `~/.ssh/ec2-key.pem`, adjust Instance-ID in `connect-aws.ps1` (line 8)
+
+## Nutzung / Usage
 
 ```batch
-connect-aws.bat
+connect-aws.bat           # Verbinden / Connect
+connect-aws.bat stop      # Instanz stoppen / Stop instance
 ```
 
-**Was passiert:**
-- Prüft ob EC2 läuft, startet automatisch falls nicht
-- Aktualisiert SSH-Config mit aktueller IP
-- Verbindet via SSH
+**DE:** Prüft ob EC2 läuft, startet automatisch falls nicht, aktualisiert SSH-Config, verbindet via SSH.
 
-## Konfiguration
+**EN:** Checks if EC2 is running, auto-starts if not, updates SSH config, connects via SSH.
 
-In `connect-aws.ps1`:
+## Konfiguration / Configuration
+
 ```powershell
-$instanceId = "i-0552f93f7e12beaa7"  # Deine Instance-ID
+$instanceId = "i-0552f93f7e12beaa7"  # Deine Instance-ID / Your Instance-ID
 $region = "eu-central-1"
 $hostName = "aws"                     # SSH alias
 ```

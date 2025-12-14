@@ -1,7 +1,7 @@
-# AWS EC2 SSH Connection Script - Minimal Version
-$ErrorActionPreference = "Stop"
+# AWS EC2 SSH Connection Script
+param([string]$Action = "connect")
 
-# Unterdrücke Fortschrittsanzeigen
+$ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 # Konfiguration
@@ -9,6 +9,18 @@ $instanceId = "i-0552f93f7e12beaa7"
 $region = "eu-central-1"
 $sshConfigPath = "$env:USERPROFILE\.ssh\config"
 $hostName = "aws"
+
+# Stop-Aktion
+if ($Action -eq "stop") {
+    Write-Host "Stoppe Instance..." -ForegroundColor Yellow
+    aws ec2 stop-instances --instance-ids $instanceId --region $region | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Instance wird gestoppt (spart Kosten!)" -ForegroundColor Green
+    } else {
+        Write-Host "Fehler beim Stoppen" -ForegroundColor Red
+    }
+    exit $LASTEXITCODE
+}
 
 # Hole Instance-Status und IP
 try {
