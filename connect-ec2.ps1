@@ -1,202 +1,310 @@
-# EC2 SSH Connection Script
-# Laedt Credentials aus credentials.ps1 (nicht im Repo!)
+# EC2 SSH Connection Script - Multilingual (DE/EN)
+# Supports multiple instances, credentials.txt/.ps1, SSH config
 param(
-    [string]$Action = "connect"
+    [string]$Action = "",
+    [string]$Instance = "",
+    [string]$Lang = ""
 )
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 # ============================================
-# KONFIGURATION
+# LANGUAGE / SPRACHE
 # ============================================
-$instanceId = "i-08aeaad1080557bea"
-$region = "eu-central-1"
-$sshUser = "ubuntu"
-$hostName = "aws"
+if (-not $Lang) {
+    $Lang = if ((Get-Culture).TwoLetterISOLanguageName -eq "de") { "de" } else { "en" }
+}
 
-# Key-Pfad (automatisch fuer jeden User)
-$keyPath = Join-Path $env:USERPROFILE ".ssh\team4_ec2.pem"
-$sshConfigPath = Join-Path $env:USERPROFILE ".ssh\config"
-
-# ============================================
-# AWS CLI PFAD FINDEN
-# ============================================
-$awsCmd = Get-Command aws -ErrorAction SilentlyContinue
-if (-not $awsCmd) {
-    # Standard-Installationspfade pruefen
-    $awsPaths = @(
-        "C:\Program Files\Amazon\AWSCLIV2\aws.exe",
-        "C:\Program Files (x86)\Amazon\AWSCLIV2\aws.exe",
-        "$env:LOCALAPPDATA\Programs\Amazon\AWSCLIV2\aws.exe"
-    )
-    foreach ($p in $awsPaths) {
-        if (Test-Path $p) {
-            $awsCmd = $p
-            break
-        }
+$msg = @{
+    "de" = @{
+        "title" = "EC2 Instance Manager"
+        "menu_connect" = "Verbinden"
+        "menu_start" = "Starten"
+        "menu_stop" = "Stoppen"
+        "menu_status" = "Status"
+        "menu_all_status" = "Alle Status"
+        "menu_stop_all" = "Alle stoppen"
+        "menu_exit" = "Beenden"
+        "select_instance" = "Instance waehlen"
+        "select_action" = "Aktion waehlen"
+        "no_instances" = "Keine Instances konfiguriert!"
+        "aws_not_found" = "AWS CLI nicht gefunden!"
+        "install_winget" = "Mit winget installieren? (j/n)"
+        "restart_terminal" = "Bitte Terminal neu starten."
+        "creds_not_found" = "FEHLER: Credentials nicht gefunden!"
+        "creds_create" = "Erstelle die Datei: credentials.ps1 ODER credentials.txt"
+        "creds_content" = "Inhalt (aus AWS Console kopieren):"
+        "creds_portal" = "Portal"
+        "key_not_found" = "SSH Key nicht gefunden"
+        "key_save" = "Bitte Key-Datei speichern als"
+        "stopping" = "Stoppe Instance..."
+        "stopped" = "Instance wird gestoppt"
+        "starting" = "Starte Instance..."
+        "started" = "Gestartet!"
+        "connecting" = "Verbinde..."
+        "no_ip" = "Keine IP gefunden"
+        "error" = "Fehler"
+        "creds_expired" = "Credentials abgelaufen?"
+        "creds_renew" = "Neue Credentials aus AWS Console holen:"
+        "status" = "Status"
+        "ip" = "IP"
+        "exiting" = "Beenden in"
+        "press_key" = "Druecke Taste..."
+        "back" = "Zurueck"
+    }
+    "en" = @{
+        "title" = "EC2 Instance Manager"
+        "menu_connect" = "Connect"
+        "menu_start" = "Start"
+        "menu_stop" = "Stop"
+        "menu_status" = "Status"
+        "menu_all_status" = "All Status"
+        "menu_stop_all" = "Stop All"
+        "menu_exit" = "Exit"
+        "select_instance" = "Select Instance"
+        "select_action" = "Select Action"
+        "no_instances" = "No instances configured!"
+        "aws_not_found" = "AWS CLI not found!"
+        "install_winget" = "Install via winget? (y/n)"
+        "restart_terminal" = "Please restart terminal."
+        "creds_not_found" = "ERROR: Credentials not found!"
+        "creds_create" = "Create file: credentials.ps1 OR credentials.txt"
+        "creds_content" = "Content (copy from AWS Console):"
+        "creds_portal" = "Portal"
+        "key_not_found" = "SSH Key not found"
+        "key_save" = "Please save key file as"
+        "stopping" = "Stopping instance..."
+        "stopped" = "Instance stopping"
+        "starting" = "Starting instance..."
+        "started" = "Started!"
+        "connecting" = "Connecting..."
+        "no_ip" = "No IP found"
+        "error" = "Error"
+        "creds_expired" = "Credentials expired?"
+        "creds_renew" = "Get new credentials from AWS Console:"
+        "status" = "Status"
+        "ip" = "IP"
+        "exiting" = "Exiting in"
+        "press_key" = "Press any key..."
+        "back" = "Back"
     }
 }
 
+function T($key) { return $msg[$Lang][$key] }
+
+# ============================================
+# INSTANCE CONFIGURATION
+# ============================================
+# Add your instances here:
+$instances = @(
+    @{
+        Name = "Team4-EC2"
+        Id = "i-08aeaad1080557bea"
+        Region = "eu-central-1"
+        User = "ubuntu"
+        KeyFile = "team4_ec2.pem"
+        SshAlias = "aws"
+    }
+    # Add more instances:
+    # @{
+    #     Name = "Production"
+    #     Id = "i-0abc123def456"
+    #     Region = "eu-west-1"
+    #     User = "ec2-user"
+    #     KeyFile = "prod.pem"
+    #     SshAlias = "prod"
+    # }
+)
+
+$sshConfigPath = Join-Path $env:USERPROFILE ".ssh\config"
+
+# ============================================
+# AWS CLI PATH
+# ============================================
+function Get-AwsCmd {
+    $awsCmd = Get-Command aws -ErrorAction SilentlyContinue
+    if (-not $awsCmd) {
+        $awsPaths = @(
+            "C:\Program Files\Amazon\AWSCLIV2\aws.exe",
+            "C:\Program Files (x86)\Amazon\AWSCLIV2\aws.exe",
+            "$env:LOCALAPPDATA\Programs\Amazon\AWSCLIV2\aws.exe"
+        )
+        foreach ($p in $awsPaths) {
+            if (Test-Path $p) { return $p }
+        }
+        return $null
+    }
+    if ($awsCmd -is [System.Management.Automation.CommandInfo]) {
+        return $awsCmd.Source
+    }
+    return $awsCmd
+}
+
+$awsCmd = Get-AwsCmd
 if (-not $awsCmd) {
-    Write-Host "AWS CLI nicht gefunden!" -ForegroundColor Red
-    $install = Read-Host "Mit winget installieren? (j/n)"
+    Write-Host (T "aws_not_found") -ForegroundColor Red
+    $install = Read-Host (T "install_winget")
     if ($install -match "^[jJyY]") {
         winget install Amazon.AWSCLI --accept-package-agreements --accept-source-agreements
-        Write-Host "Bitte Terminal neu starten." -ForegroundColor Green
+        Write-Host (T "restart_terminal") -ForegroundColor Green
     }
     exit 1
 }
 
-# Wenn es ein CommandInfo-Objekt ist, den Pfad extrahieren
-if ($awsCmd -is [System.Management.Automation.CommandInfo]) {
-    $awsCmd = $awsCmd.Source
+# ============================================
+# CREDENTIALS (supports .ps1 and .txt)
+# ============================================
+function Load-Credentials {
+    $credsPs1 = Join-Path $PSScriptRoot "credentials.ps1"
+    $credsTxt = Join-Path $PSScriptRoot "credentials.txt"
+
+    if (Test-Path $credsPs1) {
+        . $credsPs1
+        return $true
+    }
+
+    if (Test-Path $credsTxt) {
+        # Parse credentials.txt (KEY=VALUE format)
+        Get-Content $credsTxt | ForEach-Object {
+            if ($_ -match '^\s*(AWS_[A-Z_]+)\s*=\s*"?([^"]+)"?\s*$') {
+                [Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
+            }
+        }
+        return $true
+    }
+
+    return $false
 }
 
-# ============================================
-# CREDENTIALS LADEN
-# ============================================
-$credentialsFile = Join-Path $PSScriptRoot "credentials.ps1"
-
-if (-not (Test-Path $credentialsFile)) {
+if (-not (Load-Credentials)) {
     Write-Host "================================================" -ForegroundColor Red
-    Write-Host "FEHLER: credentials.ps1 nicht gefunden!" -ForegroundColor Red
+    Write-Host (T "creds_not_found") -ForegroundColor Red
     Write-Host "================================================" -ForegroundColor Red
     Write-Host ""
-    Write-Host "Erstelle die Datei: credentials.ps1 (im gleichen Ordner)" -ForegroundColor Yellow
+    Write-Host (T "creds_create") -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Inhalt (aus Techstarter AWS Accounts kopieren):" -ForegroundColor Cyan
+    Write-Host (T "creds_content") -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "credentials.ps1:" -ForegroundColor Gray
     Write-Host '  $env:AWS_ACCESS_KEY_ID = "ASIA..."'
     Write-Host '  $env:AWS_SECRET_ACCESS_KEY = "..."'
     Write-Host '  $env:AWS_SESSION_TOKEN = "..."'
     Write-Host ""
-    Write-Host "Portal: https://techstarter-sandboxes.awsapps.com/start/#/?tab=accounts" -ForegroundColor Gray
+    Write-Host "credentials.txt:" -ForegroundColor Gray
+    Write-Host '  AWS_ACCESS_KEY_ID=ASIA...'
+    Write-Host '  AWS_SECRET_ACCESS_KEY=...'
+    Write-Host '  AWS_SESSION_TOKEN=...'
     Write-Host ""
     exit 1
 }
 
-# Credentials laden
-. $credentialsFile
-
 # ============================================
-# KEY CHECK
+# HELPER FUNCTIONS
 # ============================================
-if (-not (Test-Path $keyPath)) {
-    Write-Host "SSH Key nicht gefunden: $keyPath" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Bitte Key-Datei speichern als:" -ForegroundColor Yellow
-    Write-Host "  $keyPath" -ForegroundColor Cyan
-    exit 1
-}
-
-# ============================================
-# ACTIONS
-# ============================================
-if ($Action -eq "stop") {
-    Write-Host "Stoppe Instance..." -ForegroundColor Yellow
-    & $awsCmd ec2 stop-instances --instance-ids $instanceId --region $region | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Instance wird gestoppt" -ForegroundColor Green
+function Exit-WithTimer {
+    for ($i = 3; $i -gt 0; $i--) {
+        Write-Host "$(T 'exiting') $i..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 1
     }
-    exit $LASTEXITCODE
-}
-
-if ($Action -eq "status") {
-    $info = & $awsCmd ec2 describe-instances `
-        --instance-ids $instanceId `
-        --region $region `
-        --query 'Reservations[0].Instances[0].[State.Name,PublicIpAddress]' `
-        --output text 2>&1
-
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Fehler - Credentials abgelaufen?" -ForegroundColor Red
-        Write-Host "Neue Credentials aus Techstarter AWS Accounts holen!" -ForegroundColor Yellow
-        exit 1
-    }
-
-    $parts = $info -split "`t"
-    Write-Host "Status: $($parts[0])" -ForegroundColor $(if ($parts[0] -eq "running") { "Green" } else { "Yellow" })
-    Write-Host "IP:     $($parts[1])" -ForegroundColor White
     exit 0
 }
 
-# ============================================
-# CONNECT
-# ============================================
-try {
-    $instanceInfo = & $awsCmd ec2 describe-instances `
-        --instance-ids $instanceId `
-        --region $region `
-        --query 'Reservations[0].Instances[0].[State.Name,PublicIpAddress]' `
-        --output text 2>&1
+function Show-Menu {
+    param([string]$Title, [array]$Options, [bool]$ShowBack = $false)
 
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "AWS Fehler - Credentials abgelaufen?" -ForegroundColor Red
+    Clear-Host
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "  $Title" -ForegroundColor White
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host ""
+
+    for ($i = 0; $i -lt $Options.Count; $i++) {
+        Write-Host "  [$($i + 1)] $($Options[$i])" -ForegroundColor White
+    }
+
+    if ($ShowBack) {
         Write-Host ""
-        Write-Host "Neue Credentials aus Techstarter AWS Accounts holen:" -ForegroundColor Yellow
-        Write-Host "1. https://techstarter-sandboxes.awsapps.com/start/#/?tab=accounts" -ForegroundColor Cyan
-        Write-Host "2. Account auswaehlen -> Command line or programmatic access" -ForegroundColor Cyan
-        Write-Host "3. Credentials in credentials.ps1 hinterlegen" -ForegroundColor Cyan
-        exit 1
+        Write-Host "  [B] $(T 'back')" -ForegroundColor Gray
     }
 
-    $info = $instanceInfo -split "`t"
-    $state = $info[0]
-    $publicIp = $info[1]
+    Write-Host ""
+    Write-Host "  [0] $(T 'menu_exit')" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "----------------------------------------" -ForegroundColor DarkGray
 
-    if ($state -ne "running") {
-        Write-Host "Starte Instance..." -ForegroundColor Yellow
-        & $awsCmd ec2 start-instances --instance-ids $instanceId --region $region | Out-Null
-
-        $maxWait = 90
-        $waited = 0
-        while ($waited -lt $maxWait) {
-            Start-Sleep -Seconds 5
-            $waited += 5
-            Write-Host "." -NoNewline -ForegroundColor Gray
-
-            $currentState = & $awsCmd ec2 describe-instances `
-                --instance-ids $instanceId `
-                --region $region `
-                --query 'Reservations[0].Instances[0].State.Name' `
-                --output text
-
-            if ($currentState -eq "running") {
-                Write-Host ""
-                Start-Sleep -Seconds 10
-                $publicIp = & $awsCmd ec2 describe-instances `
-                    --instance-ids $instanceId `
-                    --region $region `
-                    --query 'Reservations[0].Instances[0].PublicIpAddress' `
-                    --output text
-                Write-Host "Gestartet!" -ForegroundColor Green
-                break
-            }
-        }
-    }
-
-    if ([string]::IsNullOrWhiteSpace($publicIp) -or $publicIp -eq "None") {
-        Write-Host "Keine IP gefunden" -ForegroundColor Red
-        exit 1
-    }
-
-    Write-Host "IP: $publicIp" -ForegroundColor Cyan
-
-} catch {
-    Write-Host "Fehler: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
+    $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    return $key.Character
 }
 
-# ============================================
-# SSH CONFIG UPDATE
-# ============================================
-try {
+function Get-InstanceStatus {
+    param($Inst)
+
+    $keyPath = Join-Path $env:USERPROFILE ".ssh\$($Inst.KeyFile)"
+
+    try {
+        $info = & $awsCmd ec2 describe-instances `
+            --instance-ids $Inst.Id `
+            --region $Inst.Region `
+            --query 'Reservations[0].Instances[0].[State.Name,PublicIpAddress]' `
+            --output text 2>&1
+
+        if ($LASTEXITCODE -ne 0) {
+            return @{ State = "error"; IP = "N/A" }
+        }
+
+        $parts = $info -split "`t"
+        return @{ State = $parts[0]; IP = if ($parts[1] -eq "None") { "N/A" } else { $parts[1] } }
+    } catch {
+        return @{ State = "error"; IP = "N/A" }
+    }
+}
+
+function Start-Instance {
+    param($Inst)
+
+    Write-Host (T "starting") -ForegroundColor Yellow
+    & $awsCmd ec2 start-instances --instance-ids $Inst.Id --region $Inst.Region | Out-Null
+
+    $maxWait = 90
+    $waited = 0
+    while ($waited -lt $maxWait) {
+        Start-Sleep -Seconds 5
+        $waited += 5
+        Write-Host "." -NoNewline -ForegroundColor Gray
+
+        $status = Get-InstanceStatus $Inst
+        if ($status.State -eq "running") {
+            Write-Host ""
+            Start-Sleep -Seconds 10
+            return (Get-InstanceStatus $Inst)
+        }
+    }
+    return $null
+}
+
+function Stop-Instance {
+    param($Inst)
+
+    Write-Host (T "stopping") -ForegroundColor Yellow
+    & $awsCmd ec2 stop-instances --instance-ids $Inst.Id --region $Inst.Region | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host (T "stopped") -ForegroundColor Green
+    }
+}
+
+function Update-SshConfig {
+    param($Inst, $IP)
+
+    $keyPath = Join-Path $env:USERPROFILE ".ssh\$($Inst.KeyFile)"
     $sshDir = Split-Path $sshConfigPath -Parent
+
     if (-not (Test-Path $sshDir)) {
         New-Item -ItemType Directory -Path $sshDir -Force | Out-Null
     }
 
     $configContent = if (Test-Path $sshConfigPath) { Get-Content -Path $sshConfigPath -Raw } else { "" }
+    $hostName = $Inst.SshAlias
 
     if ($configContent -match "Host\s+$hostName\s") {
         $lines = $configContent -split "`r?`n"
@@ -208,7 +316,7 @@ try {
                 $inHostBlock = $true
                 $updatedLines += $line
             } elseif ($inHostBlock -and $line -match "^\s*HostName\s+") {
-                $updatedLines += "    HostName $publicIp"
+                $updatedLines += "    HostName $IP"
                 $inHostBlock = $false
             } elseif ($inHostBlock -and $line -match "^\s*Host\s+") {
                 $inHostBlock = $false
@@ -223,20 +331,215 @@ try {
         $newBlock = @"
 
 Host $hostName
-    HostName $publicIp
-    User $sshUser
+    HostName $IP
+    User $($Inst.User)
     IdentityFile $keyPath
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
 "@
         Add-Content -Path $sshConfigPath -Value $newBlock -Encoding UTF8
     }
-} catch {
-    Write-Host "SSH Config Fehler (ignoriert)" -ForegroundColor Yellow
+}
+
+function Connect-ToInstance {
+    param($Inst)
+
+    $keyPath = Join-Path $env:USERPROFILE ".ssh\$($Inst.KeyFile)"
+
+    # Key check
+    if (-not (Test-Path $keyPath)) {
+        Write-Host "$(T 'key_not_found'): $keyPath" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "$(T 'key_save'):" -ForegroundColor Yellow
+        Write-Host "  $keyPath" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host (T "press_key") -ForegroundColor Gray
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        return
+    }
+
+    $status = Get-InstanceStatus $Inst
+
+    if ($status.State -eq "error") {
+        Write-Host (T "creds_expired") -ForegroundColor Red
+        Write-Host (T "creds_renew") -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host (T "press_key") -ForegroundColor Gray
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        return
+    }
+
+    if ($status.State -ne "running") {
+        $status = Start-Instance $Inst
+        if (-not $status) {
+            Write-Host (T "error") -ForegroundColor Red
+            return
+        }
+        Write-Host (T "started") -ForegroundColor Green
+    }
+
+    if ($status.IP -eq "N/A") {
+        Write-Host (T "no_ip") -ForegroundColor Red
+        return
+    }
+
+    Write-Host "$(T 'ip'): $($status.IP)" -ForegroundColor Cyan
+    Update-SshConfig $Inst $status.IP
+
+    Write-Host "$(T 'connecting') (ssh $($Inst.SshAlias))" -ForegroundColor Gray
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $Inst.SshAlias
 }
 
 # ============================================
-# CONNECT
+# DIRECT ACTION MODE (command line)
 # ============================================
-Write-Host "Verbinde... (ssh $hostName)" -ForegroundColor Gray
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $hostName
+if ($Action -and $Instance) {
+    $inst = $instances | Where-Object { $_.Name -eq $Instance -or $_.SshAlias -eq $Instance }
+    if (-not $inst) {
+        Write-Host "Instance not found: $Instance" -ForegroundColor Red
+        exit 1
+    }
+
+    switch ($Action.ToLower()) {
+        "connect" { Connect-ToInstance $inst }
+        "start" { Start-Instance $inst | Out-Null; Write-Host (T "started") -ForegroundColor Green }
+        "stop" { Stop-Instance $inst }
+        "status" {
+            $s = Get-InstanceStatus $inst
+            Write-Host "$(T 'status'): $($s.State)" -ForegroundColor $(if ($s.State -eq "running") { "Green" } else { "Yellow" })
+            Write-Host "$(T 'ip'):     $($s.IP)" -ForegroundColor White
+        }
+    }
+    exit 0
+}
+
+# Quick status action
+if ($Action -eq "status" -and -not $Instance) {
+    foreach ($inst in $instances) {
+        $s = Get-InstanceStatus $inst
+        $color = switch ($s.State) { "running" { "Green" } "stopped" { "Yellow" } default { "Red" } }
+        Write-Host "$($inst.Name): $($s.State) ($($s.IP))" -ForegroundColor $color
+    }
+    exit 0
+}
+
+# ============================================
+# INTERACTIVE MENU
+# ============================================
+if ($instances.Count -eq 0) {
+    Write-Host (T "no_instances") -ForegroundColor Red
+    exit 1
+}
+
+# Single instance = direct action menu
+if ($instances.Count -eq 1) {
+    $selectedInstance = $instances[0]
+
+    while ($true) {
+        $actionOptions = @(
+            (T "menu_connect"),
+            (T "menu_status"),
+            (T "menu_stop")
+        )
+
+        $choice = Show-Menu "$($selectedInstance.Name)" $actionOptions
+
+        switch ($choice) {
+            '0' { Exit-WithTimer }
+            '1' { Connect-ToInstance $selectedInstance; break }
+            '2' {
+                $s = Get-InstanceStatus $selectedInstance
+                Write-Host ""
+                Write-Host "$(T 'status'): $($s.State)" -ForegroundColor $(if ($s.State -eq "running") { "Green" } else { "Yellow" })
+                Write-Host "$(T 'ip'):     $($s.IP)" -ForegroundColor White
+                Write-Host ""
+                Write-Host (T "press_key") -ForegroundColor Gray
+                $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+            }
+            '3' {
+                Stop-Instance $selectedInstance
+                Write-Host ""
+                Write-Host (T "press_key") -ForegroundColor Gray
+                $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+            }
+        }
+    }
+}
+
+# Multiple instances = instance selection menu
+while ($true) {
+    $instanceNames = $instances | ForEach-Object { $_.Name }
+    $instanceNames += (T "menu_all_status")
+    $instanceNames += (T "menu_stop_all")
+
+    $choice = Show-Menu (T "select_instance") $instanceNames
+
+    if ($choice -eq '0') { Exit-WithTimer }
+
+    $idx = [int]::Parse($choice) - 1
+
+    # All Status
+    if ($idx -eq $instances.Count) {
+        Write-Host ""
+        foreach ($inst in $instances) {
+            $s = Get-InstanceStatus $inst
+            $color = switch ($s.State) { "running" { "Green" } "stopped" { "Yellow" } default { "Red" } }
+            Write-Host "$($inst.Name): $($s.State) ($($s.IP))" -ForegroundColor $color
+        }
+        Write-Host ""
+        Write-Host (T "press_key") -ForegroundColor Gray
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        continue
+    }
+
+    # Stop All
+    if ($idx -eq $instances.Count + 1) {
+        foreach ($inst in $instances) {
+            Write-Host "$($inst.Name): " -NoNewline
+            Stop-Instance $inst
+        }
+        Write-Host ""
+        Write-Host (T "press_key") -ForegroundColor Gray
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        continue
+    }
+
+    if ($idx -ge 0 -and $idx -lt $instances.Count) {
+        $selectedInstance = $instances[$idx]
+
+        # Action menu for selected instance
+        while ($true) {
+            $actionOptions = @(
+                (T "menu_connect"),
+                (T "menu_status"),
+                (T "menu_stop")
+            )
+
+            $actionChoice = Show-Menu "$($selectedInstance.Name)" $actionOptions $true
+
+            switch ($actionChoice) {
+                '0' { Exit-WithTimer }
+                'b' { break }
+                'B' { break }
+                '1' { Connect-ToInstance $selectedInstance; break }
+                '2' {
+                    $s = Get-InstanceStatus $selectedInstance
+                    Write-Host ""
+                    Write-Host "$(T 'status'): $($s.State)" -ForegroundColor $(if ($s.State -eq "running") { "Green" } else { "Yellow" })
+                    Write-Host "$(T 'ip'):     $($s.IP)" -ForegroundColor White
+                    Write-Host ""
+                    Write-Host (T "press_key") -ForegroundColor Gray
+                    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                }
+                '3' {
+                    Stop-Instance $selectedInstance
+                    Write-Host ""
+                    Write-Host (T "press_key") -ForegroundColor Gray
+                    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                }
+            }
+
+            if ($actionChoice -match '^[bB]$') { break }
+        }
+    }
+}
