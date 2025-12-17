@@ -1,0 +1,11 @@
+# AWS Credentials (NIEMALS committen!)
+credentials.ps1
+credentials.txt
+*.pem
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
