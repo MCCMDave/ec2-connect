@@ -15,15 +15,16 @@ PowerShell script for seamless AWS EC2 SSH connections with automatic instance m
 - **Dynamic IP:** Updates SSH config with current public IP
 - **SSH Alias:** Custom SSH alias support (`ssh myserver`)
 - **Bilingual:** Auto-detects language (DE/EN)
-- **Credentials:** Supports both `.ps1` and `.txt` format
+- **Interactive Credentials:** Enter credentials on first start (no manual file creation)
+- **Credential Renewal:** Re-enter expired credentials without restarting
 - **AWS CLI Check:** Prompts to install via winget if missing
 - **Exit Timer:** 3-second countdown before exit (Option 0)
 
 ### Setup
 
 1. Copy your `.pem` key file to `~/.ssh/`
-2. Create `credentials.ps1` OR `credentials.txt` (see below)
-3. Edit instance configuration in `connect-ec2.ps1`
+2. Edit instance configuration in `connect-ec2.ps1`
+3. Run the script - credentials are entered interactively on first start
 
 ### Instance Configuration
 
@@ -69,23 +70,25 @@ ssh prod     # Direct SSH using alias
 
 ### Credentials
 
-**Option A: credentials.ps1**
-```powershell
-$env:AWS_ACCESS_KEY_ID = "ASIA..."
-$env:AWS_SECRET_ACCESS_KEY = "..."
-$env:AWS_SESSION_TOKEN = "..."
+**Interactive Entry (Recommended):**
+On first start, the script prompts for credentials:
 ```
+AWS_ACCESS_KEY_ID: ASIA...
+AWS_SECRET_ACCESS_KEY: ...
+AWS_SESSION_TOKEN: ...
+```
+Credentials are saved to `credentials.txt` and the menu continues automatically.
 
-**Option B: credentials.txt**
+**If credentials expire:** The script detects expired credentials and offers immediate re-entry without restart.
+
+**Manual file creation (optional):**
 ```
 AWS_ACCESS_KEY_ID=ASIA...
 AWS_SECRET_ACCESS_KEY=...
 AWS_SESSION_TOKEN=...
 ```
 
-Both formats work. The `.txt` format is simpler to copy-paste from AWS Console.
-
-**Security Note:** Both formats are equally secure when the file is in `.gitignore`. The credentials are only loaded into the current process environment.
+**Security Note:** Credentials file is in `.gitignore`. They are only loaded into the current process environment.
 
 ### Stop Backend on Instance
 
@@ -129,15 +132,16 @@ docker ps                  # List running containers
 - **Dynamische IP:** Aktualisiert SSH Config mit aktueller IP
 - **SSH Alias:** Eigene SSH Aliase (`ssh meinserver`)
 - **Zweisprachig:** Erkennt Sprache automatisch (DE/EN)
-- **Credentials:** Unterstützt `.ps1` und `.txt` Format
+- **Interaktive Credentials:** Eingabe beim ersten Start (keine manuelle Dateierstellung)
+- **Credential-Erneuerung:** Abgelaufene Credentials direkt neu eingeben ohne Neustart
 - **AWS CLI Check:** Bietet winget Installation an falls fehlend
 - **Exit Timer:** 3-Sekunden Countdown beim Beenden (Option 0)
 
 ### Einrichtung
 
 1. `.pem` Key-Datei nach `~/.ssh/` kopieren
-2. `credentials.ps1` ODER `credentials.txt` erstellen (siehe unten)
-3. Instanz-Konfiguration in `connect-ec2.ps1` anpassen
+2. Instanz-Konfiguration in `connect-ec2.ps1` anpassen
+3. Script starten - Credentials werden beim ersten Start interaktiv abgefragt
 
 ### Instanz-Konfiguration
 
@@ -183,23 +187,25 @@ ssh prod     # Direkter SSH mit Alias
 
 ### Credentials
 
-**Option A: credentials.ps1**
-```powershell
-$env:AWS_ACCESS_KEY_ID = "ASIA..."
-$env:AWS_SECRET_ACCESS_KEY = "..."
-$env:AWS_SESSION_TOKEN = "..."
+**Interaktive Eingabe (Empfohlen):**
+Beim ersten Start fragt das Script nach Credentials:
 ```
+AWS_ACCESS_KEY_ID: ASIA...
+AWS_SECRET_ACCESS_KEY: ...
+AWS_SESSION_TOKEN: ...
+```
+Credentials werden in `credentials.txt` gespeichert und das Menü startet automatisch.
 
-**Option B: credentials.txt**
+**Bei abgelaufenen Credentials:** Das Script erkennt abgelaufene Credentials und bietet direkte Neueingabe ohne Neustart.
+
+**Manuelle Dateierstellung (optional):**
 ```
 AWS_ACCESS_KEY_ID=ASIA...
 AWS_SECRET_ACCESS_KEY=...
 AWS_SESSION_TOKEN=...
 ```
 
-Beide Formate funktionieren. Das `.txt` Format ist einfacher aus der AWS Console zu kopieren.
-
-**Sicherheitshinweis:** Beide Formate sind gleich sicher, solange die Datei in `.gitignore` steht. Die Credentials werden nur in die aktuelle Prozess-Umgebung geladen.
+**Sicherheitshinweis:** Credentials-Datei ist in `.gitignore`. Sie werden nur in die aktuelle Prozess-Umgebung geladen.
 
 ### Backend auf Instanz beenden
 

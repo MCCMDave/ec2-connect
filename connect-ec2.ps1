@@ -1,5 +1,5 @@
 # EC2 SSH Connection Script - Multilingual (DE/EN)
-# Supports multiple instances, credentials.txt/.ps1, SSH config
+# Supports multiple instances, interactive credentials, SSH config
 param(
     [string]$Action = "",
     [string]$Instance = "",
@@ -32,10 +32,10 @@ $msg = @{
         "aws_not_found" = "AWS CLI nicht gefunden!"
         "install_winget" = "Mit winget installieren? (j/n)"
         "restart_terminal" = "Bitte Terminal neu starten."
-        "creds_not_found" = "FEHLER: Credentials nicht gefunden!"
-        "creds_create" = "Erstelle die Datei: credentials.ps1 ODER credentials.txt"
-        "creds_content" = "Inhalt (aus AWS Console kopieren):"
-        "creds_portal" = "Portal"
+        "creds_not_found" = "Credentials nicht gefunden!"
+        "creds_enter" = "Credentials jetzt eingeben? (j/n)"
+        "creds_saved" = "Credentials gespeichert!"
+        "creds_retry" = "Versuche erneut..."
         "key_not_found" = "SSH Key nicht gefunden"
         "key_save" = "Bitte Key-Datei speichern als"
         "stopping" = "Stoppe Instance..."
@@ -45,8 +45,8 @@ $msg = @{
         "connecting" = "Verbinde..."
         "no_ip" = "Keine IP gefunden"
         "error" = "Fehler"
-        "creds_expired" = "Credentials abgelaufen?"
-        "creds_renew" = "Neue Credentials aus AWS Console holen:"
+        "creds_expired" = "Credentials abgelaufen!"
+        "creds_renew" = "Neue Credentials eingeben? (j/n)"
         "status" = "Status"
         "ip" = "IP"
         "exiting" = "Beenden in"
@@ -68,10 +68,10 @@ $msg = @{
         "aws_not_found" = "AWS CLI not found!"
         "install_winget" = "Install via winget? (y/n)"
         "restart_terminal" = "Please restart terminal."
-        "creds_not_found" = "ERROR: Credentials not found!"
-        "creds_create" = "Create file: credentials.ps1 OR credentials.txt"
-        "creds_content" = "Content (copy from AWS Console):"
-        "creds_portal" = "Portal"
+        "creds_not_found" = "Credentials not found!"
+        "creds_enter" = "Enter credentials now? (y/n)"
+        "creds_saved" = "Credentials saved!"
+        "creds_retry" = "Retrying..."
         "key_not_found" = "SSH Key not found"
         "key_save" = "Please save key file as"
         "stopping" = "Stopping instance..."
@@ -81,8 +81,8 @@ $msg = @{
         "connecting" = "Connecting..."
         "no_ip" = "No IP found"
         "error" = "Error"
-        "creds_expired" = "Credentials expired?"
-        "creds_renew" = "Get new credentials from AWS Console:"
+        "creds_expired" = "Credentials expired!"
+        "creds_renew" = "Enter new credentials? (y/n)"
         "status" = "Status"
         "ip" = "IP"
         "exiting" = "Exiting in"
@@ -99,12 +99,12 @@ function T($key) { return $msg[$Lang][$key] }
 # Add your instances here:
 $instances = @(
     @{
-        Name = "Team4-EC2"
-        Id = "i-08aeaad1080557bea"
+        Name = "MyServer"
+        Id = "i-0123456789abcdef0"
         Region = "eu-central-1"
         User = "ubuntu"
-        KeyFile = "team4_ec2.pem"
-        SshAlias = "aws"
+        KeyFile = "my-key.pem"
+        SshAlias = "myserver"
     }
     # Add more instances:
     # @{
@@ -153,7 +153,7 @@ if (-not $awsCmd) {
 }
 
 # ============================================
-# CREDENTIALS (supports .ps1 and .txt)
+# CREDENTIALS
 # ============================================
 function Load-Credentials {
     $credsPs1 = Join-Path $PSScriptRoot "credentials.ps1"
@@ -165,7 +165,6 @@ function Load-Credentials {
     }
 
     if (Test-Path $credsTxt) {
-        # Parse credentials.txt (KEY=VALUE format)
         Get-Content $credsTxt | ForEach-Object {
             if ($_ -match '^\s*(AWS_[A-Z_]+)\s*=\s*"?([^"]+)"?\s*$') {
                 [Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
@@ -177,26 +176,45 @@ function Load-Credentials {
     return $false
 }
 
+function Enter-Credentials {
+    Write-Host ""
+    Write-Host "AWS_ACCESS_KEY_ID: " -NoNewline -ForegroundColor Gray
+    $accessKey = Read-Host
+    Write-Host "AWS_SECRET_ACCESS_KEY: " -NoNewline -ForegroundColor Gray
+    $secretKey = Read-Host
+    Write-Host "AWS_SESSION_TOKEN: " -NoNewline -ForegroundColor Gray
+    $sessionToken = Read-Host
+
+    $credsTxt = Join-Path $PSScriptRoot "credentials.txt"
+    $content = @"
+AWS_ACCESS_KEY_ID=$accessKey
+AWS_SECRET_ACCESS_KEY=$secretKey
+AWS_SESSION_TOKEN=$sessionToken
+"@
+    Set-Content -Path $credsTxt -Value $content -Encoding UTF8
+    Write-Host ""
+    Write-Host (T "creds_saved") -ForegroundColor Green
+
+    # Reload immediately
+    Load-Credentials | Out-Null
+}
+
+# Initial credential check
 if (-not (Load-Credentials)) {
-    Write-Host "================================================" -ForegroundColor Red
-    Write-Host (T "creds_not_found") -ForegroundColor Red
-    Write-Host "================================================" -ForegroundColor Red
+    Write-Host "================================================" -ForegroundColor Yellow
+    Write-Host (T "creds_not_found") -ForegroundColor Yellow
+    Write-Host "================================================" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host (T "creds_create") -ForegroundColor Yellow
+    Write-Host "Portal: https://aws.amazon.com/console" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host (T "creds_content") -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "credentials.ps1:" -ForegroundColor Gray
-    Write-Host '  $env:AWS_ACCESS_KEY_ID = "ASIA..."'
-    Write-Host '  $env:AWS_SECRET_ACCESS_KEY = "..."'
-    Write-Host '  $env:AWS_SESSION_TOKEN = "..."'
-    Write-Host ""
-    Write-Host "credentials.txt:" -ForegroundColor Gray
-    Write-Host '  AWS_ACCESS_KEY_ID=ASIA...'
-    Write-Host '  AWS_SECRET_ACCESS_KEY=...'
-    Write-Host '  AWS_SESSION_TOKEN=...'
-    Write-Host ""
-    exit 1
+    Write-Host "$(T 'creds_enter'): " -NoNewline -ForegroundColor White
+    $answer = Read-Host
+
+    if ($answer -match "^[jJyY]") {
+        Enter-Credentials
+    } else {
+        exit 1
+    }
 }
 
 # ============================================
@@ -239,8 +257,6 @@ function Show-Menu {
 
 function Get-InstanceStatus {
     param($Inst)
-
-    $keyPath = Join-Path $env:USERPROFILE ".ssh\$($Inst.KeyFile)"
 
     try {
         $info = & $awsCmd ec2 describe-instances `
@@ -346,7 +362,6 @@ function Connect-ToInstance {
 
     $keyPath = Join-Path $env:USERPROFILE ".ssh\$($Inst.KeyFile)"
 
-    # Key check
     if (-not (Test-Path $keyPath)) {
         Write-Host "$(T 'key_not_found'): $keyPath" -ForegroundColor Red
         Write-Host ""
@@ -360,13 +375,30 @@ function Connect-ToInstance {
 
     $status = Get-InstanceStatus $Inst
 
+    # Credential error - offer renewal and retry
     if ($status.State -eq "error") {
         Write-Host (T "creds_expired") -ForegroundColor Red
-        Write-Host (T "creds_renew") -ForegroundColor Yellow
         Write-Host ""
-        Write-Host (T "press_key") -ForegroundColor Gray
-        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-        return
+        Write-Host "$(T 'creds_renew'): " -NoNewline -ForegroundColor White
+        $answer = Read-Host
+
+        if ($answer -match "^[jJyY]") {
+            Enter-Credentials
+            Write-Host (T "creds_retry") -ForegroundColor Yellow
+            Start-Sleep -Seconds 1
+
+            # Retry connection
+            $status = Get-InstanceStatus $Inst
+            if ($status.State -eq "error") {
+                Write-Host (T "error") -ForegroundColor Red
+                Write-Host ""
+                Write-Host (T "press_key") -ForegroundColor Gray
+                $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                return
+            }
+        } else {
+            return
+        }
     }
 
     if ($status.State -ne "running") {
@@ -391,7 +423,7 @@ function Connect-ToInstance {
 }
 
 # ============================================
-# DIRECT ACTION MODE (command line)
+# DIRECT ACTION MODE
 # ============================================
 if ($Action -and $Instance) {
     $inst = $instances | Where-Object { $_.Name -eq $Instance -or $_.SshAlias -eq $Instance }
@@ -413,7 +445,6 @@ if ($Action -and $Instance) {
     exit 0
 }
 
-# Quick status action
 if ($Action -eq "status" -and -not $Instance) {
     foreach ($inst in $instances) {
         $s = Get-InstanceStatus $inst
@@ -453,8 +484,7 @@ if ($instances.Count -eq 1) {
                 Write-Host "$(T 'status'): $($s.State)" -ForegroundColor $(if ($s.State -eq "running") { "Green" } else { "Yellow" })
                 Write-Host "$(T 'ip'):     $($s.IP)" -ForegroundColor White
                 Write-Host ""
-                Write-Host (T "press_key") -ForegroundColor Gray
-                $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                Read-Host "ENTER"
             }
             '3' {
                 Stop-Instance $selectedInstance
@@ -464,6 +494,7 @@ if ($instances.Count -eq 1) {
             }
         }
     }
+    exit 0
 }
 
 # Multiple instances = instance selection menu
@@ -487,8 +518,7 @@ while ($true) {
             Write-Host "$($inst.Name): $($s.State) ($($s.IP))" -ForegroundColor $color
         }
         Write-Host ""
-        Write-Host (T "press_key") -ForegroundColor Gray
-        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        Read-Host "ENTER"
         continue
     }
 
@@ -507,11 +537,9 @@ while ($true) {
     if ($idx -ge 0 -and $idx -lt $instances.Count) {
         $selectedInstance = $instances[$idx]
 
-        # Action menu for selected instance
         while ($true) {
             $actionOptions = @(
                 (T "menu_connect"),
-                (T "menu_status"),
                 (T "menu_stop")
             )
 
@@ -523,15 +551,6 @@ while ($true) {
                 'B' { break }
                 '1' { Connect-ToInstance $selectedInstance; break }
                 '2' {
-                    $s = Get-InstanceStatus $selectedInstance
-                    Write-Host ""
-                    Write-Host "$(T 'status'): $($s.State)" -ForegroundColor $(if ($s.State -eq "running") { "Green" } else { "Yellow" })
-                    Write-Host "$(T 'ip'):     $($s.IP)" -ForegroundColor White
-                    Write-Host ""
-                    Write-Host (T "press_key") -ForegroundColor Gray
-                    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-                }
-                '3' {
                     Stop-Instance $selectedInstance
                     Write-Host ""
                     Write-Host (T "press_key") -ForegroundColor Gray
